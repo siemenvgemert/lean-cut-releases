@@ -1,0 +1,33 @@
+name: Publish Windows download
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify version and checksum
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re
+          tag = os.environ['RELEASE_TAG']
+          assert re.fullmatch(r'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', tag)
+          manifest = json.loads(pathlib.Path('downloads/windows-update.json').read_text())
+          assert manifest['version'] == tag[1:]
+          assert manifest['installer'] == f'Lean-Cut-{tag[1:]}-Windows-x64-Setup.exe'
+          installer = pathlib.Path('downloads') / manifest['installer']
+          assert hashlib.sha256(installer.read_bytes()).hexdigest() == manifest['sha256']
+          PY
+      - name: Publish immutable versioned assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" downloads/* --verify-tag --title "Lean-Cut ${RELEASE_TAG#v} for Windows" --notes 'Install once, then open Lean-Cut using its desktop or Start menu shortcut to receive updates automatically. Updates are applied before launch while the app is closed. No GitHub account is required. Windows 10/11 x64 with a Vulkan-capable graphics driver is required. The installer is currently unsigned; Windows may show a publisher warning.'
